@@ -1,6 +1,7 @@
 import { type Client, EmbedBuilder } from "discord.js";
 import express, { type Express, type Request, type Response } from "express";
 import type { Server } from "node:http";
+import { getPool } from "./db.js";
 
 interface EmbedField {
   name: string;
@@ -15,11 +16,39 @@ interface DmRequestBody {
   url?: string;
   color?: number;
   fields?: EmbedField[];
+  meta?: Record<string, unknown>;
 }
 
 // Discord API error codes that mean "this user can't receive a DM from us",
 // as opposed to a transient/send failure.
 const USER_UNREACHABLE_CODES = new Set([10013, 50007, 50001, 10004]);
+
+// Project nudges are the only meta shape that carries `projectId` — due-date
+// reminders send `cardId` instead. That's the only signal Planka's dispatcher
+// gives us; there's no separate "is this a nudge" flag on the wire. Failures
+// here are logged but don't fail the request: the DM already went out, and
+// this row only feeds the (separate) reaction-handler snooze mechanism.
+async function logProjectNudgeMessage(
+  meta: DmRequestBody["meta"],
+  discordMessageId: string,
+): Promise<void> {
+  const projectId = meta?.projectId;
+  if (projectId === undefined || projectId === null) {
+    return;
+  }
+
+  try {
+    await getPool().query(
+      "INSERT INTO discord_nudge_messages (project_id, discord_message_id, sent_at) VALUES ($1, $2, now())",
+      [projectId, discordMessageId],
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[server] failed to log discord_nudge_messages row for project ${String(projectId)}: ${message}`,
+    );
+  }
+}
 
 export function createServer(client: Client): Express {
   const app = express();
@@ -32,7 +61,7 @@ export function createServer(client: Client): Express {
       return;
     }
 
-    const { discordUserId, title, body, url, color, fields } = req.body ?? {};
+    const { discordUserId, title, body, url, color, fields, meta } = req.body ?? {};
     if (!discordUserId || !title || !body) {
       res.status(400).json({ error: "discordUserId, title, and body are required" });
       return;
@@ -57,6 +86,9 @@ export function createServer(client: Client): Express {
     try {
       const user = await client.users.fetch(discordUserId);
       const message = await user.send({ embeds: [embed] });
+
+      await logProjectNudgeMessage(meta, message.id);
+
       res.status(200).json({ success: true, discordMessageId: message.id });
     } catch (err) {
       const code = (err as { code?: number }).code;
