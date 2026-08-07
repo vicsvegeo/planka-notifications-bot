@@ -7,7 +7,6 @@ import {
 } from "discord.js";
 import express, { type Express, type Request, type Response } from "express";
 import type { Server } from "node:http";
-import { getPool } from "./db.js";
 
 const SNOOZE_BUTTONS: { emoji: string; label: string; code: string }[] = [
   { emoji: "😴", label: "3 days", code: "3d" },
@@ -57,33 +56,6 @@ interface DmRequestBody {
 // as opposed to a transient/send failure.
 const USER_UNREACHABLE_CODES = new Set([10013, 50007, 50001, 10004]);
 
-// Project nudges are the only meta shape that carries `projectId` — due-date
-// reminders send `cardId` instead. That's the only signal Planka's dispatcher
-// gives us; there's no separate "is this a nudge" flag on the wire. Failures
-// here are logged but don't fail the request: the DM already went out, and
-// this row only feeds the (separate) reaction-handler snooze mechanism.
-async function logProjectNudgeMessage(
-  meta: DmRequestBody["meta"],
-  discordMessageId: string,
-): Promise<void> {
-  const projectId = meta?.projectId;
-  if (projectId === undefined || projectId === null) {
-    return;
-  }
-
-  try {
-    await getPool().query(
-      "INSERT INTO discord_nudge_messages (project_id, discord_message_id, sent_at) VALUES ($1, $2, now())",
-      [projectId, discordMessageId],
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(
-      `[server] failed to log discord_nudge_messages row for project ${String(projectId)}: ${message}`,
-    );
-  }
-}
-
 export function createServer(client: Client): Express {
   const app = express();
   app.use(express.json());
@@ -124,8 +96,6 @@ export function createServer(client: Client): Express {
         embeds: [embed],
         components: snoozeRow ? [snoozeRow] : [],
       });
-
-      await logProjectNudgeMessage(meta, message.id);
 
       res.status(200).json({ success: true, discordMessageId: message.id });
     } catch (err) {
