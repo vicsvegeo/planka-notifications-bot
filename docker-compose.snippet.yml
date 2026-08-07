@@ -1,0 +1,10 @@
+# Add this service block to your existing docker-compose.yml on the deployment server.
+# Adjust the image reference once the CI workflow's registry/tag convention is finalized.
+
+services:
+  planka-notifications-bot:
+    image: ghcr.io/<your-github-org-or-user>/planka-notifications-bot:latest
+    restart: unless-stopped
+    environment:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      DATABASE_URL: ${DATABASE_URL}
