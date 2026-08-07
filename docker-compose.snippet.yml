@@ -5,6 +5,10 @@ services:
   planka-notifications-bot:
     image: ghcr.io/<your-github-org-or-user>/planka-notifications-bot:latest
     restart: unless-stopped
+    ports:
+      - 4000:4000
     environment:
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
       DATABASE_URL: ${DATABASE_URL}
+      PORT: ${PORT:-4000}
+      BOT_SERVICE_SECRET: ${BOT_SERVICE_SECRET}

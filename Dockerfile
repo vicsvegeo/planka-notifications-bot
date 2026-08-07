@@ -15,5 +15,8 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
 RUN npm install --omit=dev
 
-# Persistent Gateway worker, not an HTTP service — no PORT/EXPOSE needed.
+# Persistent Gateway worker that also exposes a small internal HTTP server
+# (POST /dm) for the Planka backend to trigger DMs through.
+EXPOSE 4000
+
 ENTRYPOINT ["node", "dist/index.js"]
