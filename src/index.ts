@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createClient, registerConnectionLogging, startBot } from "./bot.js";
 import { testConnection } from "./db.js";
+import { registerInteractionHandlers } from "./interactions.js";
 import { startServer } from "./server.js";
 
 async function main(): Promise<void> {
@@ -24,6 +25,7 @@ async function main(): Promise<void> {
 
   const client = createClient();
   registerConnectionLogging(client);
+  registerInteractionHandlers(client);
   await startBot(client, token);
 
   const port = Number(process.env.PORT) || 4000;

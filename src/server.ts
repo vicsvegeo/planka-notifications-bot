@@ -1,7 +1,41 @@
-import { type Client, EmbedBuilder } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  type Client,
+  EmbedBuilder,
+} from "discord.js";
 import express, { type Express, type Request, type Response } from "express";
 import type { Server } from "node:http";
 import { getPool } from "./db.js";
+
+const SNOOZE_BUTTONS: { emoji: string; label: string; code: string }[] = [
+  { emoji: "😴", label: "3 days", code: "3d" },
+  { emoji: "💤", label: "1 week", code: "1w" },
+  { emoji: "🌙", label: "2 weeks", code: "2w" },
+  { emoji: "🔕", label: "1 month", code: "1m" },
+];
+
+// Only project nudges (meta.projectId) get snooze buttons — due-date
+// reminders (meta.cardId) have nothing to snooze against project_snooze.
+function buildSnoozeButtonsRow(projectId: unknown): ActionRowBuilder<ButtonBuilder> | undefined {
+  if (projectId === undefined || projectId === null) {
+    return undefined;
+  }
+
+  const row = new ActionRowBuilder<ButtonBuilder>();
+  SNOOZE_BUTTONS.forEach(({ emoji, label, code }) => {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`snooze:${String(projectId)}:${code}`)
+        .setLabel(label)
+        .setEmoji(emoji)
+        .setStyle(ButtonStyle.Secondary),
+    );
+  });
+
+  return row;
+}
 
 interface EmbedField {
   name: string;
@@ -85,7 +119,11 @@ export function createServer(client: Client): Express {
 
     try {
       const user = await client.users.fetch(discordUserId);
-      const message = await user.send({ embeds: [embed] });
+      const snoozeRow = buildSnoozeButtonsRow(meta?.projectId);
+      const message = await user.send({
+        embeds: [embed],
+        components: snoozeRow ? [snoozeRow] : [],
+      });
 
       await logProjectNudgeMessage(meta, message.id);
 
