@@ -85,11 +85,11 @@ export function createServer(client: Client): Express {
     if (typeof color === "number") {
       embed.setColor(color);
     }
-    if (Array.isArray(fields) && fields.length > 0) {
-      embed.addFields(fields);
-    }
-
     try {
+      if (Array.isArray(fields) && fields.length > 0) {
+        embed.addFields(fields);
+      }
+
       const user = await client.users.fetch(discordUserId);
       const snoozeRow = buildSnoozeButtonsRow(meta?.projectId);
       const message = await user.send({
