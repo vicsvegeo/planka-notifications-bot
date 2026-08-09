@@ -9,22 +9,22 @@ const DURATION_MS: Record<string, number> = {
 };
 
 interface ParsedSnoozeCustomId {
-  projectId: string;
+  targetId: string;
   duration: string;
 }
 
-function parseSnoozeCustomId(customId: string): ParsedSnoozeCustomId | null {
+function parseSnoozeCustomId(customId: string, prefix: string): ParsedSnoozeCustomId | null {
   const parts = customId.split(":");
-  if (parts.length !== 3 || parts[0] !== "snooze") {
+  if (parts.length !== 3 || parts[0] !== prefix) {
     return null;
   }
 
-  const [, projectId, duration] = parts;
-  if (!projectId || !DURATION_MS[duration]) {
+  const [, targetId, duration] = parts;
+  if (!targetId || !DURATION_MS[duration]) {
     return null;
   }
 
-  return { projectId, duration };
+  return { targetId, duration };
 }
 
 function formatSnoozedUntil(date: Date): string {
@@ -39,11 +39,21 @@ export function registerInteractionHandlers(client: Client): void {
     if (!interaction.isButton()) {
       return;
     }
-    if (!interaction.customId.startsWith("snooze:")) {
+
+    let prefix: "snooze" | "cardsnooze";
+    if (interaction.customId.startsWith("snooze:")) {
+      prefix = "snooze";
+    } else if (interaction.customId.startsWith("cardsnooze:")) {
+      prefix = "cardsnooze";
+    } else {
       return;
     }
 
-    const parsed = parseSnoozeCustomId(interaction.customId);
+    const table = prefix === "snooze" ? "project_snooze" : "card_snooze";
+    const column = prefix === "snooze" ? "project_id" : "card_id";
+    const noun = prefix === "snooze" ? "project" : "card";
+
+    const parsed = parseSnoozeCustomId(interaction.customId, prefix);
     if (!parsed) {
       await interaction
         .reply({ content: "This snooze button is malformed and can't be processed.", flags: MessageFlags.Ephemeral })
@@ -51,7 +61,7 @@ export function registerInteractionHandlers(client: Client): void {
       return;
     }
 
-    const { projectId, duration } = parsed;
+    const { targetId, duration } = parsed;
 
     // Acknowledge within Discord's 3s window before doing any DB work;
     // editReply below has no such deadline.
@@ -74,11 +84,11 @@ export function registerInteractionHandlers(client: Client): void {
       const snoozedUntil = new Date(Date.now() + DURATION_MS[duration]);
 
       await getPool().query(
-        `INSERT INTO project_snooze (project_id, user_id, snoozed_until, created_at, updated_at)
+        `INSERT INTO ${table} (${column}, user_id, snoozed_until, created_at, updated_at)
          VALUES ($1, $2, $3, now(), now())
-         ON CONFLICT (project_id, user_id)
+         ON CONFLICT (${column}, user_id)
          DO UPDATE SET snoozed_until = excluded.snoozed_until, updated_at = now()`,
-        [projectId, plankaUserId, snoozedUntil],
+        [targetId, plankaUserId, snoozedUntil],
       );
 
       await interaction.editReply({
@@ -87,11 +97,11 @@ export function registerInteractionHandlers(client: Client): void {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(
-        `[interactions] failed to handle snooze click for project ${projectId}: ${message}`,
+        `[interactions] failed to handle snooze click for ${noun} ${targetId}: ${message}`,
       );
 
       await interaction
-        .editReply({ content: "Couldn't snooze this project — it may have been deleted." })
+        .editReply({ content: `Couldn't snooze this ${noun} — it may have been deleted.` })
         .catch(() => {});
     }
   });

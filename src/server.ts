@@ -15,10 +15,11 @@ const SNOOZE_BUTTONS: { emoji: string; label: string; code: string }[] = [
   { emoji: "🔕", label: "1 month", code: "1m" },
 ];
 
-// Only project nudges (meta.projectId) get snooze buttons — due-date
-// reminders (meta.cardId) have nothing to snooze against project_snooze.
-function buildSnoozeButtonsRow(projectId: unknown): ActionRowBuilder<ButtonBuilder> | undefined {
-  if (projectId === undefined || projectId === null) {
+function buildButtonsRow(
+  targetId: unknown,
+  customIdPrefix: string,
+): ActionRowBuilder<ButtonBuilder> | undefined {
+  if (targetId === undefined || targetId === null) {
     return undefined;
   }
 
@@ -26,7 +27,7 @@ function buildSnoozeButtonsRow(projectId: unknown): ActionRowBuilder<ButtonBuild
   SNOOZE_BUTTONS.forEach(({ emoji, label, code }) => {
     row.addComponents(
       new ButtonBuilder()
-        .setCustomId(`snooze:${String(projectId)}:${code}`)
+        .setCustomId(`${customIdPrefix}:${String(targetId)}:${code}`)
         .setLabel(label)
         .setEmoji(emoji)
         .setStyle(ButtonStyle.Secondary),
@@ -34,6 +35,16 @@ function buildSnoozeButtonsRow(projectId: unknown): ActionRowBuilder<ButtonBuild
   });
 
   return row;
+}
+
+// Project nudges (meta.projectId) get snooze: buttons against project_snooze.
+function buildSnoozeButtonsRow(projectId: unknown): ActionRowBuilder<ButtonBuilder> | undefined {
+  return buildButtonsRow(projectId, "snooze");
+}
+
+// Due-date reminders (meta.cardId) get cardsnooze: buttons against card_snooze.
+function buildCardSnoozeButtonsRow(cardId: unknown): ActionRowBuilder<ButtonBuilder> | undefined {
+  return buildButtonsRow(cardId, "cardsnooze");
 }
 
 interface EmbedField {
@@ -91,7 +102,7 @@ export function createServer(client: Client): Express {
       }
 
       const user = await client.users.fetch(discordUserId);
-      const snoozeRow = buildSnoozeButtonsRow(meta?.projectId);
+      const snoozeRow = buildSnoozeButtonsRow(meta?.projectId) ?? buildCardSnoozeButtonsRow(meta?.cardId);
       const message = await user.send({
         embeds: [embed],
         components: snoozeRow ? [snoozeRow] : [],
